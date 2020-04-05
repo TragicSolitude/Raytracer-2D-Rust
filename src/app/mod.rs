@@ -3,6 +3,8 @@ use piston::input::{RenderArgs, UpdateArgs};
 use std::f64::consts::PI;
 use graphics::math::Vec2d;
 use std::ops::Deref;
+use graphics::types::Rectangle;
+use graphics::ellipse::circle;
 
 trait Positioned {
     fn x(&self) -> f64;
@@ -62,108 +64,56 @@ impl Deref for LightSource {
     }
 }
 
-// // Never used lol
-// struct Vector {
-//     pub dir: f64,
-//     pub mag: f64
-// }
-//
-// impl Vector {
-//     // constructor omitted
-//
-//     pub fn add(&self, other: &Vector) -> Self {
-//         // let dir = Math.atan(
-//         //     ((Math.sin(this.dir) + Math.sin(other.dir)) / 2) /
-//         //     ((Math.cos(this.dir) + Math.cos(other.dir)) / 2)
-//         // );
-//         let dir_component_0 = (self.dir.sin() + other.dir.sin()) / 2.0;
-//         let dir_component_1 = (self.dir.cos() + other.dir.cos()) / 2.0;
-//         let dir = (dir_component_0 / dir_component_1).atan();
-//
-//         // let mag = (this.mag + other.mag) / 2;
-//         let mag = (self.mag + other.mag) / 2.0;
-//
-//         // return new Vector(dir, mag);
-//         Vector { dir, mag }
-//     }
-// }
-
 struct Segment {
     pub start: Vec2d,
     pub end: Vec2d,
-    pub dir: f64,
-    pub length: f64
+    pub dir: f64
 }
 
 impl Segment {
-    // dir and length arguments omitted
     pub fn new(p1: Vec2d, p2: Vec2d) -> Self {
-        // this.length = this.start.distanceTo(this.end);
-        let length = p1.distance_to(&p2);
+        // Direction memoized
         let dir = (p2.y() - p1.y()).atan2(p2.x() - p1.x());
 
-        Segment { start: p1, end: p2, dir, length }
+        Segment { start: p1, end: p2, dir }
     }
 
     // moved Ray subclass to secondary constructor on Segment
-    // omitted dir argument
-    pub fn ray(p1: Vec2d, dest: Vec2d) -> Self {
-        let dir = (dest.y() - p1.y()).atan2(dest.x() - p1.x());
+    // omitted dest argument
+    pub fn ray(p1: Vec2d, dir: f64) -> Self {
         // super(p1, new Point(p1.x + Math.cos(dir) * 2147483647, p1.y + Math.sin(dir) * 2147483647), dir);
         let end = [
             p1.x() + dir.cos() * 2147483647.0,
             p1.y() + dir.sin() * 2147483647.0
         ];
-        let length = p1.distance_to(&end);
 
-        Segment { start: p1, end, dir, length }
+        Segment { start: p1, end, dir }
     }
 }
 
-#[derive(Clone)]
-struct Rectangle {
-    pub pos: Vec2d,
-    pub width: f64,
-    pub height: f64
-    // color omitted
-}
+trait Rectangular {
+    fn vertices(&self) -> [Vec2d; 4];
 
-impl Rectangle {
-    pub fn get_points(&self) -> [Vec2d; 4] {
+    fn edges(&self) -> [Segment; 4] {
+        let points = self.vertices();
+
         [
-            self.pos,
-            [self.pos.x() + self.width, self.pos.y()],
-            [self.pos.x() + self.width, self.pos.y() + self.height],
-            [self.pos.x(), self.pos.y() + self.height]
-        ]
-    }
-
-    pub fn get_segments(&self) -> [Segment; 4] {
-        let points = self.get_points();
-
-        return [
             Segment::new(points[0], points[1]),
             Segment::new(points[1], points[2]),
             Segment::new(points[2], points[3]),
             Segment::new(points[3], points[0])
         ]
     }
-
-    // Added for compatibility with piston library
-    pub fn output(&self) -> graphics::types::Rectangle {
-        [
-            self.pos.x(),
-            self.pos.y(),
-            self.width,
-            self.height
-        ]
-    }
 }
 
-// Added for compatibility with piston library
-impl Into<graphics::types::Rectangle> for Rectangle {
-    fn into(self) -> [f64; 4] {
-        [self.pos.x(), self.pos.y(), self.width, self.height]
+impl Rectangular for graphics::types::Rectangle {
+    fn vertices(&self) -> [Vec2d; 4] {
+        [
+            [self[0], self[1]],
+            [self[0] + self[2], self[1]],
+            [self[0] + self[2], self[1] + self[3]],
+            [self[0], self[1] + self[3]]
+        ]
     }
 }
 
@@ -204,10 +154,10 @@ impl App {
         ];
 
         let shapes = vec![
-            Rectangle { pos: [0.0, 0.0], width: 750.0, height: 750.0 },
-            Rectangle { pos: [30.0, 30.0], width: 80.0, height: 80.0 },
-            Rectangle { pos: [400.0, 80.0], width: 60.0, height: 120.0 },
-            Rectangle { pos: [300.0, 550.0], width: 350.0, height: 50.0 }
+            [0.0, 0.0, 750.0, 750.0],
+            [30.0, 30.0, 80.0, 80.0],
+            [400.0, 80.0, 60.0, 120.0],
+            [300.0, 550.0, 350.0, 50.0]
         ];
 
         App {
@@ -223,6 +173,7 @@ impl App {
         const COLOR_BACKGROUND: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
         const COLOR_SHAPES: [f32; 4] = [0.0, 128.0, 128.0, 1.0];
         const COLOR_LIGHT: [f32; 4] = [255.0, 255.0, 255.0, 0.2];
+        const COLOR_LIGHTSOURCE: [f32; 4] = [255.0, 255.0, 255.0, 0.2];
 
         let shapes = self.shapes.clone();
         let lights = self.lights.clone();
@@ -231,17 +182,14 @@ impl App {
             clear(COLOR_BACKGROUND, gl);
 
             for shape in shapes.iter().skip(1) {
-                rectangle(COLOR_SHAPES, shape.output(), c.transform, gl);
+                rectangle(COLOR_SHAPES, *shape, c.transform, gl);
             }
 
             for light in lights.iter() {
-                let mut visible = light.visible.iter().peekable();
-                while let Some(intersect) = visible.next() {
-                    if let Some(peek) = visible.peek() {
-                        let poly = [**light, *intersect, **peek];
-                        polygon(COLOR_LIGHT, &poly, c.transform, gl);
-                    }
-                }
+                polygon(COLOR_LIGHT, &light.visible, c.transform, gl);
+
+                let lightsource_circle = circle(light.pos.x(), light.pos.y(), 20.0);
+                ellipse(COLOR_LIGHTSOURCE, lightsource_circle, c.transform, gl);
             }
         });
     }
@@ -251,22 +199,15 @@ impl App {
             let mut rays = Vec::with_capacity(self.shapes.len() * 4 * 3);
 
             for shape in self.shapes.iter() {
-                for point in shape.get_points().iter() {
-                    // Unused
-                    // let dir = (light.pos.y - point.y).atan2(light.pos.x - point.x) + PI;
-
+                for vertex in shape.vertices().iter() {
                     // rays.push(new Ray(new Point(light.x, light.y), Math.atan2(light.y - point.y, light.x - point.x) + Math.PI - .01, point));
                     // rays.push(new Ray(new Point(light.x, light.y), Math.atan2(light.y - point.y, light.x - point.x) + Math.PI,       point));
                     // rays.push(new Ray(new Point(light.x, light.y), Math.atan2(light.y - point.y, light.x - point.x) + Math.PI + .01, point));
 
-                    // TODO Offset the rays by angle rather than target position
-                    // Right now there is some strangeness with light piercing shapes that likely is
-                    // due to this change of behavior. The larger the margins here are the less
-                    // likely a float round error causes the light to pierce the shapes and mess up
-                    // the polygons but the less accurately the light wraps around corners.
-                    rays.push(Segment::ray(light.pos, *point));
-                    rays.push(Segment::ray(light.pos, [point.x() + 10.0, point.y()]));
-                    rays.push(Segment::ray(light.pos, [point.x(), point.y() + 10.0]));
+                    let dir = (light.pos.y() - vertex.y()).atan2(light.pos.x() - vertex.x()) + PI;
+                    rays.push(Segment::ray(light.pos, dir - 0.01));
+                    rays.push(Segment::ray(light.pos, dir));
+                    rays.push(Segment::ray(light.pos, dir + 0.01));
                 }
             }
 
@@ -275,18 +216,19 @@ impl App {
             // });
             rays.sort_by(|a, b| b.dir.partial_cmp(&a.dir).unwrap());
 
-            let mut intersects: Vec<Vec2d> = Vec::new();
+            let mut intersects: Vec<Vec2d> = Vec::with_capacity(rays.len() * 2);
+            intersects.push(light.pos);
             for (ray_index, ray) in rays.iter().enumerate() {
                 let mut maybe_lowest: Option<Vec2d> = None;
                 for shape in self.shapes.iter() {
-                    for segment in shape.get_segments().iter() {
-                        let maybe_intersect = get_line_intersect(ray, segment);
+                    for edge in shape.edges().iter() {
+                        let maybe_intersect = get_line_intersect(ray, edge);
 
                         //  if (intersect != null && (/*shapeIndex == 0 ||*/
                         //      intersect.distanceTo(segment.start) > 0.5 &&
                         //      intersect.distanceTo(segment.end) > 0.5)) {
                         if let Some(intersect) = maybe_intersect {
-                            if intersect.distance_to(&segment.start) > 0.5 && intersect.distance_to(&segment.end) > 0.5 {
+                            if intersect.distance_to(&edge.start) > 0.5 && intersect.distance_to(&edge.end) > 0.5 {
                                 // if (lowest == null) {
                                 //     lowest = intersect;
                                 // } else if (intersect.distanceTo(light) < lowest.distanceTo(light)) {
@@ -310,13 +252,11 @@ impl App {
                     } else {
                         intersects.push(lowest);
                     }
-                } else {
-                    // let unknown = shapes[0].get_segments().find(|a| a == ray.dest)
-                    // if let Some(thing) {
-                    //     intersects.push(ray.dest);
-                    // }
                 }
             }
+
+            // Loop around intersects array to properly close off polygon
+            intersects.push(intersects[1]);
 
             light.visible = intersects;
         }
