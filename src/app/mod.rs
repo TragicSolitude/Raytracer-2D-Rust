@@ -1,33 +1,32 @@
 use opengl_graphics::GlGraphics;
 use piston::input::{RenderArgs, UpdateArgs};
 use std::f64::consts::PI;
-use std::cmp::Ordering;
-use graphics::math::triangle_face;
-use graphics::draw_state::Blend::Lighter;
+use graphics::math::Vec2d;
+use std::ops::Deref;
 
-#[derive(Clone, Copy, Debug)]
-struct Point {
-    pub x: f64,
-    pub y: f64
-}
+trait Positioned {
+    fn x(&self) -> f64;
+    fn y(&self) -> f64;
 
-impl Point {
-    // constructor omitted
-
-    // setIntersectsOutside method omitted
-
-    pub fn distance_to(&self, other: &Point) -> f64 {
-        // return Math.sqrt(Math.pow(other.x - this.x, 2) + Math.pow(other.y - this.y, 2));
-        return ((other.x - self.x).powi(2) + (other.y - self.y).powi(2)).sqrt();
+    fn distance_to(&self, other: &impl Positioned) -> f64 {
+        ((other.x() - self.x()).powi(2) + (other.y() - self.y()).powi(2)).sqrt()
     }
 }
 
-// LightSource class omitted
+impl Positioned for Vec2d {
+    fn x(&self) -> f64 {
+        self[0]
+    }
+
+    fn y(&self) -> f64 {
+        self[1]
+    }
+}
 
 #[derive(Clone)]
 struct LightSource {
-    pub pos: Point,
-    pub visible: Vec<Point>,
+    pub pos: Vec2d,
+    pub visible: Vec<Vec2d>,
     // color omitted
     // all omitted
 }
@@ -35,70 +34,86 @@ struct LightSource {
 impl LightSource {
     pub fn new() -> Self {
         LightSource {
-            pos: Point { x: 0.0, y: 0.0 },
+            pos: [0.0, 0.0],
             visible: Vec::new()
         }
     }
 
-    pub fn move_to(&mut self, x: f64, y: f64) -> &mut Self {
-        self.pos.x = x;
-        self.pos.y = y;
+    /// Mutable builder style
+    pub fn move_to(&mut self, new_position: Vec2d) -> &mut Self {
+        self.pos = new_position;
+
+        self
+    }
+
+    /// One-liner builder style
+    pub fn at_position(mut self, new_position: Vec2d) -> Self {
+        self.pos = new_position;
 
         self
     }
 }
 
-struct Vector {
-    pub dir: f64,
-    pub mag: f64
-}
+impl Deref for LightSource {
+    type Target = Vec2d;
 
-impl Vector {
-    // constructor omitted
-
-    pub fn add(&self, other: &Vector) -> Self {
-        // let dir = Math.atan(
-        //     ((Math.sin(this.dir) + Math.sin(other.dir)) / 2) /
-        //     ((Math.cos(this.dir) + Math.cos(other.dir)) / 2)
-        // );
-        let dir_component_0 = (self.dir.sin() + other.dir.sin()) / 2.0;
-        let dir_component_1 = (self.dir.cos() + other.dir.cos()) / 2.0;
-        let dir = (dir_component_0 / dir_component_1).atan();
-
-        // let mag = (this.mag + other.mag) / 2;
-        let mag = (self.mag + other.mag) / 2.0;
-
-        // return new Vector(dir, mag);
-        Vector { dir, mag }
+    fn deref(&self) -> &Self::Target {
+        &self.pos
     }
 }
 
+// // Never used lol
+// struct Vector {
+//     pub dir: f64,
+//     pub mag: f64
+// }
+//
+// impl Vector {
+//     // constructor omitted
+//
+//     pub fn add(&self, other: &Vector) -> Self {
+//         // let dir = Math.atan(
+//         //     ((Math.sin(this.dir) + Math.sin(other.dir)) / 2) /
+//         //     ((Math.cos(this.dir) + Math.cos(other.dir)) / 2)
+//         // );
+//         let dir_component_0 = (self.dir.sin() + other.dir.sin()) / 2.0;
+//         let dir_component_1 = (self.dir.cos() + other.dir.cos()) / 2.0;
+//         let dir = (dir_component_0 / dir_component_1).atan();
+//
+//         // let mag = (this.mag + other.mag) / 2;
+//         let mag = (self.mag + other.mag) / 2.0;
+//
+//         // return new Vector(dir, mag);
+//         Vector { dir, mag }
+//     }
+// }
+
 struct Segment {
-    pub start: Point,
-    pub end: Point,
+    pub start: Vec2d,
+    pub end: Vec2d,
     pub dir: f64,
     pub length: f64
 }
 
 impl Segment {
     // dir and length arguments omitted
-    pub fn new(p1: Point, p2: Point) -> Self {
+    pub fn new(p1: Vec2d, p2: Vec2d) -> Self {
         // this.length = this.start.distanceTo(this.end);
         let length = p1.distance_to(&p2);
-        let dir = (p2.y - p1.y).atan2(p2.x - p1.x);
+        let dir = (p2.y() - p1.y()).atan2(p2.x() - p1.x());
 
         Segment { start: p1, end: p2, dir, length }
     }
 
     // moved Ray subclass to secondary constructor on Segment
     // omitted dir argument
-    pub fn ray(p1: Point, dest: Point) -> Self {
-        let dir = (dest.y - p1.y).atan2(dest.x - p1.x);
+    pub fn ray(p1: Vec2d, dest: Vec2d) -> Self {
+        let dir = (dest.y() - p1.y()).atan2(dest.x() - p1.x());
         // super(p1, new Point(p1.x + Math.cos(dir) * 2147483647, p1.y + Math.sin(dir) * 2147483647), dir);
-        let end = Point {
-            x: p1.x + dir.cos() * 2147483647.0,
-            y: p1.y + dir.sin() * 2147483647.0
-        };
+        let end = [
+            p1.x() + dir.cos() * 2147483647.0,
+            p1.y() + dir.sin() * 2147483647.0
+        ];
         let length = p1.distance_to(&end);
 
         Segment { start: p1, end, dir, length }
@@ -107,19 +122,19 @@ impl Segment {
 
 #[derive(Clone)]
 struct Rectangle {
-    pub pos: Point,
+    pub pos: Vec2d,
     pub width: f64,
     pub height: f64
     // color omitted
 }
 
 impl Rectangle {
-    pub fn get_points(&self) -> [Point; 4] {
+    pub fn get_points(&self) -> [Vec2d; 4] {
         [
-            Point { x: self.pos.x, y: self.pos.y },
-            Point { x: self.pos.x + self.width, y: self.pos.y },
-            Point { x: self.pos.x + self.width, y: self.pos.y + self.height },
-            Point { x: self.pos.x, y: self.pos.y + self.height}
+            self.pos,
+            [self.pos.x() + self.width, self.pos.y()],
+            [self.pos.x() + self.width, self.pos.y() + self.height],
+            [self.pos.x(), self.pos.y() + self.height]
         ]
     }
 
@@ -134,25 +149,26 @@ impl Rectangle {
         ]
     }
 
-    pub fn center_point(&self) -> Point {
-        Point {
-            x: self.pos.x + (self.width / 2.0),
-            y: self.pos.y + (self.height / 2.0)
-        }
-    }
-
     // Added for compatibility with piston library
     pub fn output(&self) -> graphics::types::Rectangle {
         [
-            self.pos.x,
-            self.pos.y,
+            self.pos.x(),
+            self.pos.y(),
             self.width,
             self.height
         ]
     }
 }
 
-fn calculate_line_intersect(p0_x: f64, p0_y: f64, p1_x: f64, p1_y: f64, p2_x: f64, p2_y: f64, p3_x: f64, p3_y: f64) -> Option<Point> {
+// Added for compatibility with piston library
+impl Into<graphics::types::Rectangle> for Rectangle {
+    fn into(self) -> [f64; 4] {
+        [self.pos.x(), self.pos.y(), self.width, self.height]
+    }
+}
+
+// TODO Rewrite this monstrosity as a trait fn
+fn calculate_line_intersect(p0_x: f64, p0_y: f64, p1_x: f64, p1_y: f64, p2_x: f64, p2_y: f64, p3_x: f64, p3_y: f64) -> Option<Vec2d> {
     let s1_x = p1_x - p0_x;
     let s1_y = p1_y - p0_y;
     let s2_x = p3_x - p2_x;
@@ -165,14 +181,14 @@ fn calculate_line_intersect(p0_x: f64, p0_y: f64, p1_x: f64, p1_y: f64, p2_x: f6
         let i_x = p0_x + (t * s1_x);
         let i_y = p0_y + (t * s1_y);
 
-        return Some(Point { x: i_x, y: i_y });
+        return Some([i_x, i_y]);
     }
 
     None
 }
 
-fn get_line_intersect(s1: &Segment, s2: &Segment) -> Option<Point> {
-    calculate_line_intersect(s1.start.x, s1.start.y, s1.end.x, s1.end.y, s2.start.x, s2.start.y, s2.end.x, s2.end.y)
+fn get_line_intersect(s1: &Segment, s2: &Segment) -> Option<Vec2d> {
+    calculate_line_intersect(s1.start.x(), s1.start.y(), s1.end.x(), s1.end.y(), s2.start.x(), s2.start.y(), s2.end.x(), s2.end.y())
 }
 
 pub struct App {
@@ -183,18 +199,15 @@ pub struct App {
 
 impl App {
     pub fn new(gl: GlGraphics) -> Self {
-        let mut lightsource = LightSource::new();
-        lightsource.move_to(485.0, 485.0);
-
         let lights = vec![
-            lightsource
+            LightSource::new().at_position([485.0, 485.0])
         ];
 
         let shapes = vec![
-            Rectangle { pos: Point { x: 0.0, y: 0.0 }, width: 750.0, height: 750.0 },
-            Rectangle { pos: Point { x: 30.0, y: 30.0 }, width: 80.0, height: 80.0 },
-            Rectangle { pos: Point { x: 400.0, y: 80.0 }, width: 60.0, height: 120.0 },
-            Rectangle { pos: Point { x: 300.0, y: 550.0 }, width: 350.0, height: 50.0 }
+            Rectangle { pos: [0.0, 0.0], width: 750.0, height: 750.0 },
+            Rectangle { pos: [30.0, 30.0], width: 80.0, height: 80.0 },
+            Rectangle { pos: [400.0, 80.0], width: 60.0, height: 120.0 },
+            Rectangle { pos: [300.0, 550.0], width: 350.0, height: 50.0 }
         ];
 
         App {
@@ -224,14 +237,8 @@ impl App {
             for light in lights.iter() {
                 let mut visible = light.visible.iter().peekable();
                 while let Some(intersect) = visible.next() {
-                    let peek = visible.peek();
-
                     if let Some(peek) = visible.peek() {
-                        let poly = [
-                            [light.pos.x, light.pos.y],
-                            [intersect.x, intersect.y],
-                            [peek.x, peek.y],
-                        ];
+                        let poly = [**light, *intersect, **peek];
                         polygon(COLOR_LIGHT, &poly, c.transform, gl);
                     }
                 }
@@ -239,7 +246,7 @@ impl App {
         });
     }
 
-    pub fn update(&mut self, args: &UpdateArgs) {
+    pub fn update(&mut self, _args: &UpdateArgs) {
         for light in self.lights.iter_mut() {
             let mut rays = Vec::with_capacity(self.shapes.len() * 4 * 3);
 
@@ -258,8 +265,8 @@ impl App {
                     // likely a float round error causes the light to pierce the shapes and mess up
                     // the polygons but the less accurately the light wraps around corners.
                     rays.push(Segment::ray(light.pos, *point));
-                    rays.push(Segment::ray(light.pos, Point { x: point.x + 10.0, y: point.y }));
-                    rays.push(Segment::ray(light.pos, Point { x: point.x, y: point.y + 10.0 }));
+                    rays.push(Segment::ray(light.pos, [point.x() + 10.0, point.y()]));
+                    rays.push(Segment::ray(light.pos, [point.x(), point.y() + 10.0]));
                 }
             }
 
@@ -268,9 +275,9 @@ impl App {
             // });
             rays.sort_by(|a, b| b.dir.partial_cmp(&a.dir).unwrap());
 
-            let mut intersects: Vec<Point> = Vec::new();
-            for (rayIndex, ray) in rays.iter().enumerate() {
-                let mut maybe_lowest: Option<Point> = None;
+            let mut intersects: Vec<Vec2d> = Vec::new();
+            for (ray_index, ray) in rays.iter().enumerate() {
+                let mut maybe_lowest: Option<Vec2d> = None;
                 for shape in self.shapes.iter() {
                     for segment in shape.get_segments().iter() {
                         let maybe_intersect = get_line_intersect(ray, segment);
@@ -298,7 +305,7 @@ impl App {
                 }
 
                 if let Some(lowest) = maybe_lowest {
-                    if rayIndex > 0 && (rayIndex - 1) % 3 == 0 && lowest.distance_to(&light.pos) > ray.end.distance_to(&light.pos) {
+                    if ray_index > 0 && (ray_index - 1) % 3 == 0 && lowest.distance_to(&light.pos) > ray.end.distance_to(&light.pos) {
                         intersects.push(ray.end);
                     } else {
                         intersects.push(lowest);
@@ -316,6 +323,6 @@ impl App {
     }
 
     pub fn update_mouse(&mut self, position: &[f64; 2]) {
-        self.lights[0].move_to(position[0], position[1]);
+        self.lights[0].move_to(*position);
     }
 }
