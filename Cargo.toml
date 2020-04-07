@@ -12,6 +12,7 @@ piston2d-graphics = "0.36"
 pistoncore-glutin_window = "0.63"
 piston2d-opengl_graphics = "0.72"
 cgmath = "0.17"
+bitflags = "1.2.1"
 
 [profile.release]
 lto = true

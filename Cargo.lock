@@ -1028,6 +1028,7 @@ dependencies = [
 name = "raytracer-2d"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "cgmath",
  "piston",
  "piston2d-graphics",

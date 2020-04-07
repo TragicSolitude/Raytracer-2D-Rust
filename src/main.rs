@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate bitflags;
+
 mod app;
 
 use app::App;
@@ -5,7 +8,7 @@ use glutin_window::{OpenGL, GlutinWindow};
 use piston::window::WindowSettings;
 use opengl_graphics::GlGraphics;
 use piston::event_loop::{Events, EventSettings};
-use piston::input::{RenderEvent, UpdateEvent, MouseCursorEvent};
+use piston::input::{RenderEvent, UpdateEvent, MouseCursorEvent, PressEvent, ReleaseEvent};
 
 const OPENGL_VERSION: OpenGL = OpenGL::V3_3;
 
@@ -30,6 +33,14 @@ fn main() {
 
         if let Some(args) = e.mouse_cursor_args() {
             app.update_mouse(&args);
+        }
+
+        if let Some(args) = e.press_args() {
+            app.enable_key(args);
+        }
+
+        if let Some(args) = e.release_args() {
+            app.disable_key(args);
         }
     }
 }

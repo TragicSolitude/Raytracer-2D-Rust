@@ -1,5 +1,5 @@
 use opengl_graphics::GlGraphics;
-use piston::input::{RenderArgs, UpdateArgs};
+use piston::input::{RenderArgs, UpdateArgs, Button, Key};
 use std::f64::consts::PI;
 use graphics::math::Vec2d;
 use std::ops::Deref;
@@ -53,6 +53,16 @@ impl LightSource {
         self.pos = new_position;
 
         self
+    }
+
+    pub fn trace_to(&self, rays: &mut Vec<Segment>, shape: &impl Rectangular) {
+        for vertex in shape.vertices().iter() {
+            let dir = (self.pos.y() - vertex.y()).atan2(self.pos.x() - vertex.x()) + PI;
+
+            rays.push(Segment::ray(self.pos, dir - 0.01));
+            rays.push(Segment::ray(self.pos, dir));
+            rays.push(Segment::ray(self.pos, dir + 0.01));
+        }
     }
 }
 
@@ -141,10 +151,22 @@ fn get_line_intersect(s1: &Segment, s2: &Segment) -> Option<Vec2d> {
     calculate_line_intersect(s1.start.x(), s1.start.y(), s1.end.x(), s1.end.y(), s2.start.x(), s2.start.y(), s2.end.x(), s2.end.y())
 }
 
+bitflags! {
+    struct Keys: u64 {
+        const NONE = 0;
+        const UP = 1;
+        const RIGHT = 2;
+        const DOWN = 4;
+        const LEFT = 8;
+    }
+}
+
 pub struct App {
     gl: GlGraphics,
     lights: Vec<LightSource>,
-    shapes: Vec<Rectangle>
+    shapes: Vec<Rectangle>,
+    camera_pos: Vec2d,
+    keys: Keys
 }
 
 impl App {
@@ -163,7 +185,9 @@ impl App {
         App {
             gl,
             lights,
-            shapes
+            shapes,
+            camera_pos: [0.0, 0.0],
+            keys: Keys::NONE
         }
     }
 
@@ -175,40 +199,51 @@ impl App {
         const COLOR_LIGHT: [f32; 4] = [255.0, 255.0, 255.0, 0.2];
         const COLOR_LIGHTSOURCE: [f32; 4] = [255.0, 255.0, 255.0, 0.2];
 
+        let camera_pos = self.camera_pos;
         let shapes = self.shapes.clone();
         let lights = self.lights.clone();
 
         self.gl.draw(args.viewport(), |c, gl| {
             clear(COLOR_BACKGROUND, gl);
 
+            let shape_transform = c.transform.trans(-camera_pos.x(), camera_pos.y());
+
             for shape in shapes.iter().skip(1) {
-                rectangle(COLOR_SHAPES, *shape, c.transform, gl);
+                rectangle(COLOR_SHAPES, *shape, shape_transform, gl);
             }
 
             for light in lights.iter() {
-                polygon(COLOR_LIGHT, &light.visible, c.transform, gl);
+                polygon(COLOR_LIGHT, &light.visible, shape_transform, gl);
 
                 let lightsource_circle = circle(light.pos.x(), light.pos.y(), 20.0);
-                ellipse(COLOR_LIGHTSOURCE, lightsource_circle, c.transform, gl);
+                ellipse(COLOR_LIGHTSOURCE, lightsource_circle, shape_transform, gl);
             }
         });
     }
 
-    pub fn update(&mut self, _args: &UpdateArgs) {
+    pub fn update(&mut self, args: &UpdateArgs) {
+        if self.keys & Keys::UP == Keys::UP {
+            self.camera_pos[1] += 100.0 * args.dt;
+            self.shapes[0][1] -= 100.0 * args.dt;
+        }
+        if self.keys & Keys::RIGHT == Keys::RIGHT {
+            self.camera_pos[0] += 100.0 * args.dt;
+            self.shapes[0][0] += 100.0 * args.dt;
+        }
+        if self.keys & Keys::DOWN == Keys::DOWN {
+            self.camera_pos[1] -= 100.0 * args.dt;
+            self.shapes[0][1] += 100.0 * args.dt;
+        }
+        if self.keys & Keys::LEFT == Keys::LEFT {
+            self.camera_pos[0] -= 100.0 * args.dt;
+            self.shapes[0][0] -= 100.0 * args.dt;
+        }
+
         for light in self.lights.iter_mut() {
             let mut rays = Vec::with_capacity(self.shapes.len() * 4 * 3);
 
             for shape in self.shapes.iter() {
-                for vertex in shape.vertices().iter() {
-                    // rays.push(new Ray(new Point(light.x, light.y), Math.atan2(light.y - point.y, light.x - point.x) + Math.PI - .01, point));
-                    // rays.push(new Ray(new Point(light.x, light.y), Math.atan2(light.y - point.y, light.x - point.x) + Math.PI,       point));
-                    // rays.push(new Ray(new Point(light.x, light.y), Math.atan2(light.y - point.y, light.x - point.x) + Math.PI + .01, point));
-
-                    let dir = (light.pos.y() - vertex.y()).atan2(light.pos.x() - vertex.x()) + PI;
-                    rays.push(Segment::ray(light.pos, dir - 0.01));
-                    rays.push(Segment::ray(light.pos, dir));
-                    rays.push(Segment::ray(light.pos, dir + 0.01));
-                }
+                light.trace_to(&mut rays, shape);
             }
 
             // rays.sort(function (a, b) {
@@ -263,6 +298,30 @@ impl App {
     }
 
     pub fn update_mouse(&mut self, position: &[f64; 2]) {
-        self.lights[0].move_to(*position);
+        // self.lights[0].move_to(*position);
+    }
+
+    pub fn enable_key(&mut self, button: Button) {
+        if let Button::Keyboard(key) = button {
+            self.keys ^= match key {
+                Key::W => Keys::UP,
+                Key::D => Keys::RIGHT,
+                Key::S => Keys::DOWN,
+                Key::A => Keys::LEFT,
+                _ => Keys::NONE
+            };
+        }
+    }
+
+    pub fn disable_key(&mut self, button: Button) {
+        if let Button::Keyboard(key) = button {
+            self.keys ^= match key {
+                Key::W => Keys::UP,
+                Key::D => Keys::RIGHT,
+                Key::S => Keys::DOWN,
+                Key::A => Keys::LEFT,
+                _ => Keys::NONE
+            };
+        }
     }
 }
