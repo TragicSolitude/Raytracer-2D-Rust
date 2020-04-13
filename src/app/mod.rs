@@ -1,8 +1,10 @@
-use opengl_graphics::GlGraphics;
-use piston::input::{RenderArgs, UpdateArgs, Button, Key};
+use piston_window::G2d;
+use piston_window::Context;
+use piston_window::Button;
+use piston_window::Key;
+use piston_window::UpdateArgs;
 use std::f64::consts::PI;
 use graphics::math::Vec2d;
-use std::ops::Deref;
 use graphics::types::Rectangle;
 use graphics::ellipse::circle;
 
@@ -26,16 +28,16 @@ impl Positioned for Vec2d {
 }
 
 #[derive(Clone)]
-struct LightSource {
+struct RaySource {
     pub pos: Vec2d,
     pub visible: Vec<Vec2d>,
     // color omitted
     // all omitted
 }
 
-impl LightSource {
+impl RaySource {
     pub fn new() -> Self {
-        LightSource {
+        RaySource {
             pos: [0.0, 0.0],
             visible: Vec::new()
         }
@@ -63,14 +65,6 @@ impl LightSource {
             rays.push(Segment::ray(self.pos, dir));
             rays.push(Segment::ray(self.pos, dir + 0.01));
         }
-    }
-}
-
-impl Deref for LightSource {
-    type Target = Vec2d;
-
-    fn deref(&self) -> &Self::Target {
-        &self.pos
     }
 }
 
@@ -162,17 +156,16 @@ bitflags! {
 }
 
 pub struct App {
-    gl: GlGraphics,
-    lights: Vec<LightSource>,
+    lights: Vec<RaySource>,
     shapes: Vec<Rectangle>,
     camera_pos: Vec2d,
     keys: Keys
 }
 
 impl App {
-    pub fn new(gl: GlGraphics) -> Self {
+    pub fn new() -> Self {
         let lights = vec![
-            LightSource::new().at_position([485.0, 485.0])
+            RaySource::new().at_position([485.0, 485.0])
         ];
 
         let shapes = vec![
@@ -183,7 +176,6 @@ impl App {
         ];
 
         App {
-            gl,
             lights,
             shapes,
             camera_pos: [0.0, 0.0],
@@ -191,7 +183,7 @@ impl App {
         }
     }
 
-    pub fn render(&mut self, args: &RenderArgs) {
+    pub fn render(&mut self, context: Context, gl: &mut G2d) {
         use graphics::*;
 
         const COLOR_BACKGROUND: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
@@ -203,22 +195,23 @@ impl App {
         let shapes = self.shapes.clone();
         let lights = self.lights.clone();
 
-        self.gl.draw(args.viewport(), |c, gl| {
-            clear(COLOR_BACKGROUND, gl);
+        // self.gl.draw(args.viewport(), |c, gl| {
+        clear(COLOR_BACKGROUND, gl);
 
-            let shape_transform = c.transform.trans(-camera_pos.x(), camera_pos.y());
+        let shape_transform = context.transform
+            .trans(-camera_pos.x(), camera_pos.y());
 
-            for shape in shapes.iter().skip(1) {
-                rectangle(COLOR_SHAPES, *shape, shape_transform, gl);
-            }
+        for shape in shapes.iter().skip(1) {
+            rectangle(COLOR_SHAPES, *shape, shape_transform, gl);
+        }
 
-            for light in lights.iter() {
-                polygon(COLOR_LIGHT, &light.visible, shape_transform, gl);
+        for light in lights.iter() {
+            polygon(COLOR_LIGHT, &light.visible, shape_transform, gl);
 
-                let lightsource_circle = circle(light.pos.x(), light.pos.y(), 20.0);
-                ellipse(COLOR_LIGHTSOURCE, lightsource_circle, shape_transform, gl);
-            }
-        });
+            let lightsource_circle = circle(light.pos.x(), light.pos.y(), 20.0);
+            ellipse(COLOR_LIGHTSOURCE, lightsource_circle, shape_transform, gl);
+        }
+        // });
     }
 
     pub fn update(&mut self, args: &UpdateArgs) {
