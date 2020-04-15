@@ -10,6 +10,7 @@ use piston_window::OpenGL;
 use piston_window::UpdateEvent;
 use piston_window::ReleaseEvent;
 use piston_window::PressEvent;
+// use piston_window::MouseCursorEvent;
 
 const OPENGL_VERSION: OpenGL = OpenGL::V4_5;
 
@@ -30,12 +31,16 @@ fn main() {
             app.update(&args);
         }
 
+        // if let Some(args) = e.mouse_cursor_args() {
+        //     app.update_mouse(&args);
+        // }
+
         if let Some(args) = e.press_args() {
-            app.enable_key(args);
+            app.enable_key(&args);
         }
 
         if let Some(args) = e.release_args() {
-            app.disable_key(args);
+            app.disable_key(&args);
         }
     }
 }

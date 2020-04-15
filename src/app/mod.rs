@@ -30,6 +30,7 @@ impl Positioned for Vec2d {
 #[derive(Clone)]
 struct RaySource {
     pub pos: Vec2d,
+    pub should_update: bool,
     pub visible: Vec<Vec2d>,
     // color omitted
     // all omitted
@@ -39,6 +40,7 @@ impl RaySource {
     pub fn new() -> Self {
         RaySource {
             pos: [0.0, 0.0],
+            should_update: true,
             visible: Vec::new()
         }
     }
@@ -146,12 +148,12 @@ fn get_line_intersect(s1: &Segment, s2: &Segment) -> Option<Vec2d> {
 }
 
 bitflags! {
-    struct Keys: u64 {
+    struct Controls: u64 {
         const NONE = 0;
-        const UP = 1;
-        const RIGHT = 2;
-        const DOWN = 4;
-        const LEFT = 8;
+        const MOVE_UP = 1;
+        const MOVE_RIGHT = 2;
+        const MOVE_DOWN = 4;
+        const MOVE_LEFT = 8;
     }
 }
 
@@ -159,7 +161,7 @@ pub struct App {
     lights: Vec<RaySource>,
     shapes: Vec<Rectangle>,
     camera_pos: Vec2d,
-    keys: Keys
+    controls: Controls
 }
 
 impl App {
@@ -169,7 +171,7 @@ impl App {
         ];
 
         let shapes = vec![
-            [0.0, 0.0, 750.0, 750.0],
+            [-5000.0, -5000.0, 10000.0, 10000.0],
             [30.0, 30.0, 80.0, 80.0],
             [400.0, 80.0, 60.0, 120.0],
             [300.0, 550.0, 350.0, 50.0]
@@ -179,7 +181,7 @@ impl App {
             lights,
             shapes,
             camera_pos: [0.0, 0.0],
-            keys: Keys::NONE
+            controls: Controls::NONE
         }
     }
 
@@ -191,21 +193,17 @@ impl App {
         const COLOR_LIGHT: [f32; 4] = [255.0, 255.0, 255.0, 0.2];
         const COLOR_LIGHTSOURCE: [f32; 4] = [255.0, 255.0, 255.0, 0.2];
 
-        let camera_pos = self.camera_pos;
-        let shapes = self.shapes.clone();
-        let lights = self.lights.clone();
-
         // self.gl.draw(args.viewport(), |c, gl| {
         clear(COLOR_BACKGROUND, gl);
 
         let shape_transform = context.transform
-            .trans(-camera_pos.x(), camera_pos.y());
+            .trans(-self.camera_pos.x(), self.camera_pos.y());
 
-        for shape in shapes.iter().skip(1) {
+        for shape in self.shapes.iter().skip(1) {
             rectangle(COLOR_SHAPES, *shape, shape_transform, gl);
         }
 
-        for light in lights.iter() {
+        for light in self.lights.iter() {
             polygon(COLOR_LIGHT, &light.visible, shape_transform, gl);
 
             let lightsource_circle = circle(light.pos.x(), light.pos.y(), 20.0);
@@ -215,24 +213,25 @@ impl App {
     }
 
     pub fn update(&mut self, args: &UpdateArgs) {
-        if self.keys & Keys::UP == Keys::UP {
+        if self.controls & Controls::MOVE_UP == Controls::MOVE_UP {
             self.camera_pos[1] += 100.0 * args.dt;
-            self.shapes[0][1] -= 100.0 * args.dt;
         }
-        if self.keys & Keys::RIGHT == Keys::RIGHT {
+        if self.controls & Controls::MOVE_RIGHT == Controls::MOVE_RIGHT {
             self.camera_pos[0] += 100.0 * args.dt;
-            self.shapes[0][0] += 100.0 * args.dt;
         }
-        if self.keys & Keys::DOWN == Keys::DOWN {
+        if self.controls & Controls::MOVE_DOWN == Controls::MOVE_DOWN {
             self.camera_pos[1] -= 100.0 * args.dt;
-            self.shapes[0][1] += 100.0 * args.dt;
         }
-        if self.keys & Keys::LEFT == Keys::LEFT {
+        if self.controls & Controls::MOVE_LEFT == Controls::MOVE_LEFT {
             self.camera_pos[0] -= 100.0 * args.dt;
-            self.shapes[0][0] -= 100.0 * args.dt;
         }
 
         for light in self.lights.iter_mut() {
+            // No need to retrace something that hasn't moved
+            if !light.should_update {
+                continue;
+            }
+
             let mut rays = Vec::with_capacity(self.shapes.len() * 4 * 3);
 
             for shape in self.shapes.iter() {
@@ -287,33 +286,35 @@ impl App {
             intersects.push(intersects[1]);
 
             light.visible = intersects;
+            light.should_update = false;
         }
     }
 
-    pub fn update_mouse(&mut self, position: &[f64; 2]) {
-        // self.lights[0].move_to(*position);
-    }
+    // pub fn update_mouse(&mut self, position: &[f64; 2]) {
+    //     self.lights[0].move_to(*position);
+    //     self.lights[0].should_update = true;
+    // }
 
-    pub fn enable_key(&mut self, button: Button) {
-        if let Button::Keyboard(key) = button {
-            self.keys ^= match key {
-                Key::W => Keys::UP,
-                Key::D => Keys::RIGHT,
-                Key::S => Keys::DOWN,
-                Key::A => Keys::LEFT,
-                _ => Keys::NONE
+    pub fn enable_key(&mut self, button: &Button) {
+        if let &Button::Keyboard(key) = button {
+            self.controls |= match key {
+                Key::W => Controls::MOVE_UP,
+                Key::D => Controls::MOVE_RIGHT,
+                Key::S => Controls::MOVE_DOWN,
+                Key::A => Controls::MOVE_LEFT,
+                _ => Controls::NONE
             };
         }
     }
 
-    pub fn disable_key(&mut self, button: Button) {
-        if let Button::Keyboard(key) = button {
-            self.keys ^= match key {
-                Key::W => Keys::UP,
-                Key::D => Keys::RIGHT,
-                Key::S => Keys::DOWN,
-                Key::A => Keys::LEFT,
-                _ => Keys::NONE
+    pub fn disable_key(&mut self, button: &Button) {
+        if let &Button::Keyboard(key) = button {
+            self.controls &= !match key {
+                Key::W => Controls::MOVE_UP,
+                Key::D => Controls::MOVE_RIGHT,
+                Key::S => Controls::MOVE_DOWN,
+                Key::A => Controls::MOVE_LEFT,
+                _ => Controls::NONE
             };
         }
     }
